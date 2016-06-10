@@ -192,17 +192,16 @@ Remove the unioned table
 ### Intersect the fixes for males vs female with the land cover layer
 	SELECT
 	  sex,  
-	  st_value(rast,st_transform(geom, 3035)) AS lc_id,
+	  ST_Value(rast, ST_Transform(geom, 3035)) AS lc_id,
 	  count(*) AS number_locations
 	FROM 
 	  demo_florida.gps_data_animals,
 	  demo_florida.land_cover,
-	  main.animals,
-	  env_data.corine_land_cover_legend
+	  main.animals
 	WHERE
 	  animals.animals_id = gps_data_animals.animals_id AND
 	  gps_validity_code = 1 AND
-	  st_intersects(st_transform(geom, 3035), rast)
+	  ST_Intersects(ST_Transform(geom, 3035), rast)
 	GROUP BY 
 	  sex, lc_id
 	ORDER BY 
@@ -218,12 +217,12 @@ Remove the unioned table
 		FROM (
 		  SELECT 
 		    months, 
-		    ST_valuecount(ST_union(st_clip(rast ,st_transform(geom,3035))))  stats
+		    ST_ValueCount(ST_Union(ST_Clip(rast ,ST_Transform(geom,3035))))  stats
 		  FROM
 		    demo_florida.view_convexhull_monthly,
 		    demo_florida.land_cover
 		  WHERE
-		    st_intersects (rast, st_transform(geom,3035))
+		    ST_Intersects (rast, ST_Transform(geom,3035))
 		  GROUP BY 
 		    months) a
 		)
@@ -378,7 +377,7 @@ Structure of the name of the original file: *MCD13Q1.A2005003.005.250m_7_days_ND
 	    +
 	    ST_VALUE(post.rast, geom) * 
 	    (acquisition_time::date - DATE_TRUNC('week', acquisition_time::date)::date))::integer/7)
-	    ) * 0.0048 -0.2
+	    ) * 0.0048 -0.2 AS ndvi
 	FROM  
 	  demo_florida.gps_data_animals,
 	  demo_florida.modis_ndvi AS pre,
