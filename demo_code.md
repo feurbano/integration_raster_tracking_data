@@ -3,10 +3,54 @@ Exercise based on data stored in the EURODEER database.
 Land cover data source: Corine Land Cover project (http://land.copernicus.eu/pan-european/corine-land-cover)
 
 ## Introduction
-*The advancement in movement ecology from a data perspective can reach its full potential only by combining the technology of animal tracking with the technology of other environmental sensing programmes. Ecology is fundamentally spatial, and animal ecology is obviously no exception. Any scientific question in animal ecology cannot overlook the dynamic interaction between individual animals or populations, and the environment in which the ecological processes occur. Movement provides the mechanistic link to explain this complex ecosystem interaction, as the movement path is dynamically determined by external factors, through their effect on the individual's state and the life-history characteristics of an animal. Therefore, most modelling approaches for animal movement include environmental factors as explanatory variables.  
-In these examples we will explore some simple analysis performed with spatial SQL into the database that relate animal movements based on GPS tracking data with land cover/use data.*
+*The advancement in movement ecology from a data perspective can reach its full potential only by combining the technology of animal tracking with the technology of other environmental sensing programmes. Ecology is fundamentally spatial, and animal ecology is obviously no exception. Any scientific question in animal ecology cannot overlook the dynamic interaction between individual animals or populations, and the environment in which the ecological processes occur. Movement provides the mechanistic link to explain this complex ecosystem interaction, as the movement path is dynamically determined by external factors, through their effect on the individual's state and the life-history characteristics of an animal. Therefore, **most modelling approaches for animal movement include environmental factors as explanatory variables.**  
+In these examples we will explore some simple analysis performed with spatial SQL into the database that relate animal movements based on **GPS tracking data** with **land cover/use data.***
+
+## Explore the content of the reference data set
+
+## Content of the movement data table (roe deer)
+	SELECT 
+	   gps_data_animals_id, 
+	   animals_id, 
+	   gps_sensors_id, 
+	   acquisition_time,
+	   geom, 
+	   gps_validity_code
+	FROM 
+	  demo_florida.gps_data_animals
+	LIMIT 5;
+
+## Number of locations for each individual, deployment interval and time step
+	SELECT 
+	  animals_id, 
+	  count(*), 
+	  min(acquisition_time), 
+	  max(acquisition_time),
+	  (max(acquisition_time::date)-min(acquisition_time))/count(*) AS average_step
+	FROM 
+	  demo_florida.gps_data_animals
+	GROUP by 
+	  animals_id
+	ORDER BY 
+	  animals_id;
+
+## Number of locations for each quality code
+	SELECT 
+	  a.gps_validity_code,
+	  b.gps_validity_description,
+	  count(*)
+	FROM 
+	  demo_florida.gps_data_animals a,
+	  lu_tables.lu_gps_validity b
+	WHERE
+	  a.gps_validity_code = b.gps_validity_code
+	GROUP BY 
+	  a.gps_validity_code, b.gps_validity_description
+	ORDER BY 
+	  a.gps_validity_code;
 
 ## Create database views for spatial representations of animal movement
+
 ### Generate a view for the convex hull of all animals
 	CREATE OR REPLACE VIEW demo_florida.view_convexhull AS 
 	SELECT 
@@ -55,9 +99,10 @@ In these examples we will explore some simple analysis performed with spatial SQ
 	   extract(month FROM acquisition_time);
 
 ## Set up raster layer into the database
-### Import land cover layer
+### Import land cover layer (CORINE data set) *(only example, not run)*
 
-> raster2pgsql.exe -C -t 128x128 -M -r C:/land_cover/corine_land_cover_2006.tif demo_florida.ndvi_modis | psql.exe -d eurodeer_db -U postgres -p 5432
+> raster2pgsql.exe -C -t 128x128 -M -r C:/land_cover/corine_land_cover_2006.tif demo_florida.land_cover | 
+> psql.exe -d eurodeer_db -U postgres -p 5432
 
 #### Meaning of raster2pgsql parameters
 * -C: new table
@@ -66,6 +111,7 @@ In these examples we will explore some simple analysis performed with spatial SQ
 * -r: Set the constraints for regular blocking
 
 ### Create a table from an existing (larger) DB layer - LAND COVER
+
 	CREATE TABLE demo_florida.land_cover (rid SERIAL primary key, rast raster);
 
 	CREATE INDEX land_cover_rast_idx 
@@ -86,6 +132,7 @@ In these examples we will explore some simple analysis performed with spatial SQ
 
 #### Export the layer to tiff
 Create a new table with all reaster unioned, add constraints, export to TIFF with GDAL, drop the table
+
 	CREATE TABLE demo_florida.land_cover_export(rast raster);
 
 	INSERT INTO 
@@ -97,7 +144,7 @@ Create a new table with all reaster unioned, add constraints, export to TIFF wit
 
 	SELECT AddRasterConstraints('demo_florida'::name, 'land_cover_export'::name, 'rast'::name);
 Export with GDAL_translate
-> gdal_translate -of GTIFF "PG:host=eurodeer2.fmach.it dbname=eurodeer_db user='postgres' schema=demo_florida table=land_cover_export mode=2" C:\Users\User\Desktop\Florida\land_cover.tif
+> gdal_translate -of GTIFF "PG:host=eurodeer2.fmach.it dbname=eurodeer_db user='postgres' schema=demo_florida table=land_cover_export mode=2" C:\Users\User\Desktop\landcover\land_cover.tif
 
 Remove the unioned table
 
@@ -141,9 +188,10 @@ Remove the unioned table
 	  lc_id,
 	  label3
 	ORDER BY
-	  percentage;
+	  percentage DESC;
 
 ### Intersect the convex hull of animal 782 with the land cover layer
+
 	SELECT 
 	  (stats).value AS grid_code, 
 	  (stats).count AS num_pixels
@@ -238,7 +286,7 @@ Remove the unioned table
 	ORDER BY
 	  label3, months;
 
-### Calculate the percentage of each land cover class for all the fixes of animal 782
+### Calculate the percentage of each land cover class for male/female *(takes a bit)*
 	WITH locations_landcover AS
 		(
 		SELECT
@@ -265,21 +313,21 @@ Remove the unioned table
 	WHERE
 	  grid_code = lc_id 
 	ORDER BY
-	  sex, percentage DESC;
+	  label3, sex;
 
 # DEMONSTRATION 2: Analyzing location data with a time series of environmental layers
 Exercise based on data stored in the EURODEER database.  
 NDVI data source: MODIS NDVI (http://modis-land.gsfc.nasa.gov/vi.html), in a version (smoothed, weekly) downloaded from Boku University Portal](http://ivfl-info.boku.ac.at/index.php/eo-data-processing
 
 ## Introduction
-*Animal locations are not only spatial, but are fully defined by spatial and temporal coordinates (as given by the acquisition time). Logically, the same temporal definition also applies to environmental layers. Some characteristics of the landscape, such as land cover or road networks, can be considered static over a large period of time and these environmental layers are commonly intersected with animal locations to infer habitat use and selection by animals. However, many characteristics actually relevant to wildlife, such as vegetation biomass or road traffic, are indeed subject to temporal variability (on the order of hours to weeks) in the landscape, and would be better represented by dynamic layers that correspond closely to the conditions actually encountered by an animal moving across the landscape. Nowadays, satellite-based remote sensing can provide high temporal resolution global coverage of medium-resolution images that can be used to compute a large number of environmental parameters very useful to wildlife studies. One of the most common set of environmental data time series is the Normalized Difference Vegetation Index (NDVI), but other examples include data sets on snow, ocean primary productivity, surface temperature, or salinity. Snow cover, NDVI, and sea surface temperature are some examples of indexes that can be used as explanatory variables in statistical models or to parametrize bayesian inferences or mechanistic models. The main shortcoming of such remote-sensing layers is the relatively low spatial resolution, which does not fit the current average bias of wildlife-tracking GPS locations (less than 20 m), thus potentially leading to a spatial mismatch between the animal-based information and the environmental layers (note that the resolution can still be perfectly fine, depending on the overall spatial variability and the species and biological process under study). Higher-resolution images and new types of information (e.g. forest structure) are presently provided by new types of sensors, such as those from lidar, radar, or hyper-spectral remote-sensing technology and the new Sentinel 2 (optical data). The new generation of satellites will probably require dedicated storage and analysis tools (e.g. Goggle Earth Engine) that can be related to the Big Data framework. 
+*Animal locations are not only spatial, but are **fully defined by spatial and temporal coordinates** (as given by the acquisition time). Logically, the same temporal definition also applies to environmental layers. Some characteristics of the landscape, such as land cover or road networks, can be considered static over a large period of time and these environmental layers are commonly intersected with animal locations to infer habitat use and selection by animals. However, many characteristics actually relevant to wildlife, such as vegetation biomass or road traffic, are indeed subject to temporal variability (on the order of hours to weeks) in the landscape, and would be better represented by dynamic layers that correspond closely to the conditions actually encountered by an animal moving across the landscape. Nowadays, satellite-based remote sensing can provide high temporal resolution global coverage of medium/high-resolution images that can be used to compute a large number of environmental parameters very useful to wildlife studies. One of the most common set of environmental data time series is the Normalized Difference Vegetation Index (NDVI), but other examples include data sets on snow, ocean primary productivity, surface temperature, or salinity. Snow cover, NDVI, and sea surface temperature are some examples of indexes that can be used as explanatory variables in statistical models or to parametrize bayesian inferences or mechanistic models. The main shortcoming of such remote-sensing layers is the relatively low spatial and/or temporal resolution, which does not fit the current average bias of wildlife-tracking GPS locations (less than 20 m) and temporal scale of animal movement, thus potentially leading to a mismatch between the animal-based information and the environmental layers (note that the resolution can still be perfectly fine, depending on the overall spatial and temporal variability and the species and biological process under study). Higher-resolution images and new types of information (e.g. forest structure) are presently provided by new types of sensors, such as those from lidar, radar, or hyper-spectral remote-sensing technology and the new Sentinel 2 (optical data). The new generation of satellites will probably require dedicated storage and analysis tools (e.g. Goggle Earth Engine) that can be related to the Big Data framework. 
 Here, we will explore some simple example of spatio-temporal analyses that involve the interaction between GPS data and NDVI time series.*
 
 *The MODIS (Moderate Resolution Imaging Spectroradiometer) instrument operates on the NASA's Terra and Aqua spacecraft. The instrument views the entire earth surface every 1 to 2 days, captures data in 36 spectral bands ranging in wavelength from 0.4 μm to 14.4 μm and at varying spatial resolutions (250 m, 500 m and 1 km). The Global MODIS vegetation indices (code MOD13Q1) are designed to provide consistent spatial and temporal comparisons of vegetation conditions. Red and near-infrared reflectances, centred at 645 nm and 858 nm, respectively, are used to determine the daily vegetation indices, including the well known NDVI. This index is calculated by contrasting intense chlorophyll pigment absorption in the red against the high reflectance of leaf mesophyll in the near infrared. It is a proxy of plant photosynthetic activity and has been found to be highly related to green leaf area index (LAI) and to the fraction of photosynthetically active radiation absorbed by vegetation (FAPAR). Past studies have demonstrated the potential of using NDVI data to study vegetation dynamics. More recently, several applications have been developed using MODIS NDVI data such as land-cover change detection, monitoring forest phenophases, modelling wheat yield, and other applications in forest and agricultural sciences. However, the utility of the MODIS NDVI data products is limited by the availability of high-quality data (e.g. cloud-free), and several processing steps are required before using the data: acquisition via web facilities, re-projection from the native sinusoidal projection to a standard latitude-longitude format, eventually the mosaicking of two or more tiles into a single tile. A number of processing techniques to 'smooth' the data and obtain a cleaned (no clouds) time series of NDVI imagery have also been implemented. These kind of processes are usually based on a set of ancillary information on the data quality of each pixel that are provided together with MODIS NDVI.*
 
 ## Set up raster time series into the database 
 
-### Import MODIS NDVI time series
+### Import MODIS NDVI time series *(only example, not run)*
 
 > raster2pgsql.exe -C -r -t 128x128 -F -M -R -N -3000 C:/modis/MOD*.tif demo_florida.ndvi_modis | psql.exe -d eurodeer_db -U postgres -p 5432
 
