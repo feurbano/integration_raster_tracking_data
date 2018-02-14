@@ -489,6 +489,35 @@ Structure of the name of the original file: *MCD13Q1.A2005003.005.250m_7_days_ND
 	  GROUP BY months
 	  ORDER BY months
 	) a;
+	
+
+### Calculate time series of average, max and min NDVI for a given polygon in a given time interval	
+```sql 
+WITH selected_area AS 
+(SELECT st_setsrid(ST_MakePolygon(ST_GeomFromText('LINESTRING(11.03 45.98, 11.03 46.02, 11.08 46.02, 11.08 45.98, 11.03 45.98)')), 4326) AS geom)
+
+SELECT
+  acquisition_date, 
+  ((stats).mean  * 0.0048 - 0.2)::numeric (4,3)  AS ndvi_avg,
+  ((stats).min * 0.0048 - 0.2)::numeric (4,3)  AS ndvi_min,
+  ((stats).max * 0.0048 - 0.2)::numeric (4,3) AS ndvi_max,
+  ((stats).stddev)::numeric (6,3) AS digital_value_stddev,
+  ((stats).count) AS num_pixels
+FROM
+( 
+  SELECT
+    acquisition_date,
+    ST_SummaryStats(ST_UNION(ST_CLIP(rast,geom)))  AS stats
+  FROM 
+    selected_area,
+    demo_florida.modis_ndvi
+  WHERE
+    ST_INTERSECTS (rast, geom) AND 
+    acquisition_date > '1/1/2017' and acquisition_date < '30/6/2017'
+  GROUP BY acquisition_date
+  ORDER BY acquisition_date
+) a;
+```
 
 ### Plot raster time series stored in PostgreSQL/PostGIS from R
 *See R code*
