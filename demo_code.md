@@ -622,3 +622,7 @@ legend("top", inset=.01, c("7-daily Boku","10-daily smoothed"),box.lwd = 1, ncol
 legend("bottom", inset=.01, c("Snow","No snow","Unknown"), box.lwd = 1, ncol=3, box.col = "#111111", bg = "#ffffff",  pch = c('|','|','|'), lty = c( NA,NA,NA),col=c("dark blue","green","dark grey"),cex=0.8, pt.cex=1.1,  lwd = 2)
 dev.off() 
 ```
+Output
+<p align="center">
+  <img src="https://github.com/feurbano/integration_raster_tracking_data/blob/master/test_profile.png" Height="250"/>	
+</p>
