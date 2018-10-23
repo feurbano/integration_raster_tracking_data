@@ -624,5 +624,5 @@ dev.off()
 ```
 Output
 <p align="center">
-  <img src="https://github.com/feurbano/integration_raster_tracking_data/blob/master/test_profile.png" Height="250"/>	
+  <img src="https://github.com/feurbano/integration_raster_tracking_data/blob/master/test_profile.png" />	
 </p>
