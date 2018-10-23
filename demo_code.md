@@ -520,4 +520,105 @@ FROM
 ```
 
 ### Plot raster time series stored in PostgreSQL/PostGIS from R
-*See R code*
+```
+# SCRIPT THAT GENERATES A GRAPH WITH NDVI PROFILES OF MODIS (SOURCES: TEN-DAILY SMOOTHED, WEEKLY BOKU)
+# THE SCRIPT CONNECT WITH THE DB WITH A DEDICATED USER
+# ONLY LIBRARY NEEDED IS RPostgreSQL
+
+# INPUT PARAMETERS ARE:
+# 1) THE COORDINATES OF THE POINT 
+# 2) THE START AND END DATE THAT IS PLOTTED
+# 3) THE PATH AND NAME OF THE .PNG FILE THAT IS GENERATED
+
+# IT IS POSSIBLE TO PLOT THE IMAGE IN R AND NOT IN THE PNG, CHECK THE CODE TO SEE HOW
+
+# PARAMETERS
+# set here the coordinates where the profiles will be extracted (longitude, latitude)
+coordinates <- '11.155089, 46.1317984'
+# set here the start end end date for the plotting
+stardate <- '1/2/10'
+enddate <- '1/11/14'
+# set name of output file (use double "\" for the path)
+name_file <- "C:\\temp\\test_profile.png"
+
+library(RPostgreSQL)
+drv <- dbDriver("PostgreSQL")
+con <- dbConnect(drv, dbname="...", host="...", user="...", password="...")
+
+rs <- dbSendQuery(con, paste('with point as (select st_setsrid(st_makepoint(',coordinates,'), 4326) point_geom) select st_x(point_geom) x, st_y(point_geom) as y, acquisition_date, ((st_value(rast, point_geom)))::numeric(4,3) ndvi from env_data_ts.ndvi_modis_smoothed, point where st_intersects(point_geom, rast) order by acquisition_date', sep=""))
+df_modis_smoothed <- fetch(rs,-1)
+dbClearResult(rs)
+
+rs <- dbSendQuery(con, paste('with point as (select st_setsrid(st_makepoint(',coordinates,'), 4326) point_geom) select st_x(point_geom) x, st_y(point_geom) as y, acquisition_date, ((st_value(rast, point_geom))*0.0048-0.2)::numeric(4,3) ndvi from env_data_ts.ndvi_modis_boku, point where st_intersects(point_geom, rast) order by acquisition_date', sep=""))
+df_modis_boku <- fetch(rs,-1)
+dbClearResult(rs)
+
+rs <- dbSendQuery(con, paste('with point as (select st_setsrid(st_makepoint(',coordinates,'), 4326) point_geom) 
+select st_x(point_geom) x, st_y(point_geom) as y, acquisition_date+3 as acquisition_date, -0.2 snow_marker from env_data_ts.snow_modis, point where st_intersects(point_geom, rast) and (st_value(rast, point_geom)) = 200 order by acquisition_date', sep=""))
+df_modis_snow <- fetch(rs,-1)
+dbClearResult(rs)
+
+
+rs <- dbSendQuery(con, paste('with point as (select st_setsrid(st_makepoint(',coordinates,'), 4326) point_geom) 
+select st_x(point_geom) x, st_y(point_geom) as y, acquisition_date+3 as acquisition_date, -0.2 snow_marker from env_data_ts.snow_modis, point where st_intersects(point_geom, rast) and (st_value(rast, point_geom)) = 50 order by acquisition_date', sep=""))
+df_modis_snow_unknown <- fetch(rs,-1)
+dbClearResult(rs)
+
+rs <- dbSendQuery(con, paste('with point as (select st_setsrid(st_makepoint(',coordinates,'), 4326) point_geom) 
+select st_x(point_geom) x, st_y(point_geom) as y, acquisition_date+3 as acquisition_date, -0.2 snow_marker from env_data_ts.snow_modis, point where st_intersects(point_geom, rast) and (st_value(rast, point_geom)) = 25 order by acquisition_date', sep=""))
+df_modis_nosnow <- fetch(rs,-1)
+dbClearResult(rs)
+
+rs <- dbSendQuery(con, paste('with point as (select st_transform(st_setsrid(st_makepoint(',coordinates,'), 4326),3035) point_geom) select corine_land_cover_legend.label3 from   env_data.corine_land_cover_2006, env_data.corine_land_cover_legend, point where st_intersects(point_geom, rast) and  (st_value(rast, point_geom)) = corine_land_cover_legend.grid_code', sep=""))
+corine2006 <- fetch(rs,-1)
+dbClearResult(rs)
+
+rs <- dbSendQuery(con, paste('with point as (select st_transform(st_setsrid(st_makepoint(',coordinates,'), 4326),3035) point_geom) select st_value(rast, point_geom) from  env_data.dem_copernicus, point where st_intersects(point_geom, rast)', sep=""))
+demcopernicus <- fetch(rs,-1)
+dbClearResult(rs)
+
+rs <- dbSendQuery(con, paste('with point as (select st_setsrid(st_makepoint(',coordinates,'), 4326) point_geom) SELECT iso || \' \'||name_2 geom  FROM env_data.administrative_units, point where st_intersects(point_geom, geom)', sep=""))
+adm <- fetch(rs,-1)
+dbClearResult(rs)
+
+rs <- dbSendQuery(con, paste('with point as (select st_setsrid(st_makepoint(',coordinates,'), 4326) point_geom) select st_value(rast, point_geom)::numeric(3,2) from  env_data.ndvi_constancy, point where st_intersects(point_geom, rast)', sep=""))
+constancy <- fetch(rs,-1)
+dbClearResult(rs)
+
+rs <- dbSendQuery(con, paste('with point as (select st_setsrid(st_makepoint(',coordinates,'), 4326) point_geom) select st_value(rast, point_geom)::numeric(3,2) from  env_data.ndvi_contingency, point where st_intersects(point_geom, rast)', sep=""))
+contingency <- fetch(rs,-1)
+dbClearResult(rs)
+
+rs <- dbSendQuery(con, paste('with point as (select st_setsrid(st_makepoint(',coordinates,'), 4326) point_geom) SELECT namex  FROM  env_data.study_areas_ref, point where st_intersects(point_geom, geom)', sep=""))
+areas <- fetch(rs,-1)
+dbClearResult(rs)
+if (nrow(areas)==0) {areastudy <- 'Outside study areas'} else {areastudy <- areas[,1]}
+dbDisconnect(con)
+
+#here if you want to generate a .png (in this case, comment the "dev.new" line
+png( name_file, width=17, height=8, units="in", res=600)
+
+#dev.new(width=17, height=8)
+plot.new()
+rect(par("usr")[1],par("usr")[3],par("usr")[2],par("usr")[4],col="#fbfbfb")
+par(new=T)
+st2 <- rep(c(T,F,F), 24)
+st3 <- rep(c(F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,T,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F,F), 2)
+
+plot(ndvi ~ acquisition_date, df_modis_smoothed, main=paste('NDVI Profile at (',coordinates,')',sep=""), sub=paste('Land cover: ',corine2006[,1],' - Altitude: ',demcopernicus[,1],' - Adm. Area: ', adm[,1],' - Study area: ',areastudy,' - Contingency: ',contingency,'  - Constancy: ', constancy,sep=""), type = "o",  lwd = 2, pch=4, cex=0.9, col="red", xlab="", xaxt = "n",  yaxt = "n",ylab="MODIS NDVI", xlim=c(as.Date(stardate, "%d/%m/%y"), as.Date(enddate, "%d/%m/%y")), ylim=c(-0.2, 1.05))
+
+par(new=T)
+plot(ndvi ~ acquisition_date, df_modis_boku,  type = "o", lwd = 2, pch=4, cex=0.9, col="blue", xlab="", ylab="", xaxt = "n",  yaxt = "n", xlim=c(as.Date(stardate, "%d/%m/%y"), as.Date(enddate, "%d/%m/%y")), ylim=c(-0.35, 1.1))
+
+par(new=T)
+plot(snow_marker ~ acquisition_date, df_modis_snow, pch='|', type = "p", cex=1.2, col="dark blue",xlab="", ylab="", xaxt = "n", yaxt = "n", xlim=c(as.Date(stardate, "%d/%m/%y"), as.Date(enddate, "%d/%m/%y")), ylim=c(-0.35, 1.1))
+par(new=T)
+plot(snow_marker ~ acquisition_date, df_modis_snow_unknown, pch='|', type = "p", cex=1.2, col="dark grey",xlab="", ylab="", xaxt = "n", yaxt = "n", xlim=c(as.Date(stardate, "%d/%m/%y"), as.Date(enddate, "%d/%m/%y")), ylim=c(-0.35, 1.1))
+par(new=T)
+plot(snow_marker ~ acquisition_date, df_modis_nosnow, pch='|', type = "p", cex=1.2, col="green",xlab="", ylab="", xaxt = "n", yaxt = "n", xlim=c(as.Date(stardate, "%d/%m/%y"), as.Date(enddate, "%d/%m/%y")), ylim=c(-0.35, 1.1))
+
+legend("top", inset=.01, c("7-daily Boku","10-daily smoothed"),box.lwd = 1, ncol=2, box.col = "#111111",bg = "#ffffff", lty = c( 1,1), pch = c(4,4),col=c("blue","red"),cex=0.8, lwd = 2, pt.cex=1.1,)
+
+legend("bottom", inset=.01, c("Snow","No snow","Unknown"), box.lwd = 1, ncol=3, box.col = "#111111", bg = "#ffffff",  pch = c('|','|','|'), lty = c( NA,NA,NA),col=c("dark blue","green","dark grey"),cex=0.8, pt.cex=1.1,  lwd = 2)
+dev.off() 
+```
